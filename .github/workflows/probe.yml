@@ -1,0 +1,9 @@
+# 一次性探针 caller（用完即删）：跨仓调用 witnessloop 的 probe-ref.yml
+name: probe-caller
+on:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  probe:
+    uses: Xingkai98/witnessloop/.github/workflows/probe-ref.yml@probe/workflow-ref
