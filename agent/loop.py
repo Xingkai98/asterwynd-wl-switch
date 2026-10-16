@@ -1772,3 +1772,5 @@ class AgentLoop:
             "provider": str(provider),
             "agent_version": agent_version,
         }
+
+# 坏 PR 实验：改 agent/** 但不建 change 目录
