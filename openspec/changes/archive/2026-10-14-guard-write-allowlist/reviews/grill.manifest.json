@@ -1,14 +1,14 @@
 {
   "schema": "witnessloop/review-manifest@v1",
-  "change_id": "guard-write-allowlist",
+  "change_id": "2026-10-14-guard-write-allowlist",
   "stage": "grill",
-  "reviewer_run_id": "grill-guard-write-allowlist-20261014",
-  "author_run_id": "5e145688-d679-4d7f-b284-7fd205a32f82",
-  "base_sha": "fd6d5814b027bc86c50236f3c69853619602192d",
-  "head_sha": "aadf915987f3aafdf7b9ed3175c8de1c67404a08",
+  "reviewer_run_id": "rev-g",
+  "author_run_id": "aut-g",
+  "base_sha": "3c7196b2531f41bd6c559c678a3101d2d6342a09",
+  "head_sha": "d94c08334ae570d64e1aa4e89030556c2b7cf1de",
   "tasks_hash": "e10d5a574e716f02266f42bde3561f44f047991fb0387db27e844e2605adc8f5",
   "spec_hash": "11efd21eea28e71527c81dc62ac927207741407f1a819a8f3b630b91bc2b57ad",
-  "diff_hash": "39af967b1080fe465525588543febfef2df21ce35431f895378a832ee82d0670",
+  "diff_hash": "56e78fc96a4bf04bd135eb219423654e1bc708581155e660e33731d7f43daf17",
   "report_hash": "caee404b641c55af486af095e8f8ac5c248b93db5ad4e99b632ed00fb2098152",
   "report_path": "reviews/grill-design.md"
 }
