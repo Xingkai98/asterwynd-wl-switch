@@ -1,5 +1,13 @@
 # Design: 护栏写白名单（guard-write-allowlist）
 
+## 行号口径（本文件全文统一，读锚点前先读这一节）
+
+本文件里的 `文件:行号` 锚点**一律是「本 change 之前」的树（`fd6d581`，`agent/workspace_policy.py` 当时 398 行）上的行号**——设计是在那棵树上做的，所以指向既有代码的锚点都按它写。
+
+**本 change 新增的符号在原树上不存在**，因此它们**只以符号名引用，不给行号**：`write_allowlist_covers`、`is_structural_deny_pattern`、`is_structural_denied_path`、`WorkspacePolicy.allowed_write_paths` / `_allowlist_covers_resolved` / `is_write_allowed`、`CommandGuard._allow_covers`、`CommandGuard.allowed_write_paths` / `denied_patterns` 形参、`ToolsConfig.allowed_write_paths`、`_parse_allowed_write_paths`。要它们在当前树上的位置，请 `grep -n '<符号名>' <文件>`——**不要**把本文件里的行号直接套到改动后的文件上（该文件已从 398 行增长到 507 行，`workspace_policy.py` 与 `command_guard.py` 的多数锚点都向后移了）。
+
+> **勘误（building-review R3 的 N-3）**：本节的这两条规则是**事后补写**的。在此之前，Decision 2 里曾有一处把 `is_write_allowed` / `_allowlist_covers_resolved` 写成「变更后」行号（`:445` / `:433`），而同段其余锚点（如 `:317`）用的是变更前口径 ⇒ 同一段两种口径，按本节声明的读法会落空。现已删掉那两个数字、按上面的规则只留符号名。**没有**把全文改成当前树口径：本文件有 102 处行号引用，其中相当一部分是省略文件名、靠上下文解析的裸 `:NNN`，逐处改号需要与「符号是否在本 change 新增」逐条对照，属一次独立的核对工作；在审阅 PASS 之后的 delta 里仓促重编号，风险恰好落在本次审阅一直在查的那一类（锚点写错）。故本轮只消除不一致本身，口径统一为「变更前树 + 新增符号不给行号」。
+
 ## Context
 
 `bash-command-guard-redesign`（issue #254）把「什么算敏感点文件名」从三处独立定义收敛成共享谓词 `is_sensitive_dot_name`（`agent/workspace_policy.py:45-109`，设计 D12），并给命令护栏建了单一解析管线。收敛之后暴露出来的第一个政策缺口就是 issue [#272](https://github.com/Xingkai98/asterwynd/issues/272)：**没有任何配置通道能授权 agent 写一个被 deny 的 `.env`**。用户当时拍板「白名单机制不塞进 #254、留作后续独立 change」，本 change 就是那个承接。
@@ -74,6 +82,9 @@
 
 **「写目标判定面」的唯一定义（本 change 全文与规格同此口径，禁止再用「三面」之类的缩写）**：`CommandGuard` 中**消费写目标路径**的六个判定方法——`_check_target`（`:930-938`，**仅其在写目标位置上的调用**）、`_has_protected_redirect`（`:976-993`）、`_check_dynamic_target`（`:940-960`）、`_check_mv_cp`（`:1106-1122`）、`_check_tee`（`:1156-1167`）、`_check_dd`（`:1139-1154`）。**明确排除三项**：① `check()` 第 1 步的**整句 denylist 正则扫描**（`:737-741`，pre-IR，见 Decision 9 与「Bash 层豁免覆盖面差异」）；② `mv`/`cp` 的**源位置**判定（`_check_ir_segment` `:875` 与 `_check_argv_segment` `:1060` 都用 `_check_target` 判 `source`——那是**读侧**，与 U8 / U5 的「只放行写」冲突，allow SHALL NOT 影响它）；③ `_check_rm`（`:1077-1103`）——它只判 `-r`+`-f` 的**逃逸**面，与 allow 无关。`tasks.md` 3.2 的收敛清单与本节同口径。
 - **`WorkspacePolicy.is_denied`（`:316-338`）保持原语义，SHALL NOT 感知 allowlist。**
+- 公开查询入口 `WorkspacePolicy.is_write_allowed(path)` 与 `is_denied` **同形**：先 `assert_within_workspace`，越界路径抛 `PermissionError` 而非返回 `False`；判定本体抽在私有 helper `_allowlist_covers_resolved(resolved)`，供 `assert_write_allowed` 复用，避免热路径上重复解析一次路径。（这两个符号都是**本 change 新增**的，`fd6d581` 的 `agent/workspace_policy.py` 里不存在，故按下面的行号口径**只给符号名、不给行号**。）
+
+**一处**有意**的行为变化（building-review R2 的 I-5 边角，如实记录）**：`is_write_allowed` 对「**空 allowlist + 越界路径**」由原先的**返回 `False`** 改为**抛 `PermissionError`**。原因：旧顺序是先判空表早返、再查边界 ⇒ 同一个「这条路径是否被覆盖？」的问题，会随配置内容在**布尔**与**异常**之间切换（allowlist 为空返回 `False`、非空则抛异常），自相矛盾；新顺序让它与 `is_denied`（同样先 `assert_within_workspace`，`agent/workspace_policy.py:317`）**对称**，也与本方法的 docstring「The workspace boundary is checked first and is never overridable」一致。方向是 **fail-closed（更严）**，且 `is_write_allowed` 全仓**零调用方**（只有定义与 `assert_write_allowed` 内部对私有 helper 的使用），无功能后果。**注意**：这条变化**不在** I-4 的传参改动里，`6a43aee` 的提交信息把它一并写进「除 I-4 传参外无行为变更」是**不准确的**，已在后续提交如实更正（不改写历史）。
 
 **这条是本 change 最容易写错、且写错后果最重的地方**：`is_denied` 是 `assert_read_allowed`（`:350-354`）与 `assert_write_allowed`（`:356-360`）的**同一个实现**（两处都在 `:352` / `:358` 直接调它），`agent/code_intelligence/repo_map.py:173` 还**直接**调它做 tree-sitter 跳过判定。⇒ 把 allow 写进 `is_denied` 会**同时**打开三处：① `Read` / `Grep` / `ListFiles` / `Find` / `ReadDoc` / `InspectGitDiff` / LSP 的读（全部走 `assert_read_allowed`）；② **RepoMap / SymbolSearch 会把被豁免的 `.env` 收进符号索引**（`repo_map.py:173` → `_should_ignore`）；③ `assert_write_allowed` 本身。其中 ② 尤其隐蔽——它不报错，只是默默把凭据文件的内容送进索引与上下文。Grill 的首轮审阅正是靠这条把本设计的原稿判为自相矛盾（原稿 Decision 2 要求 `is_denied` 调共享谓词，而 Decision 5 与规格又要求读不放行）。
 
@@ -93,6 +104,10 @@
 - **业界同名解法**：codex 明确「glob 只能用于 deny，不能用于授权」（`codex/codex-rs/sandboxing/src/policy_transforms.rs:30-35`），授权走精确路径 + 符号链接保留式规范化（同文件 `:39-41`）。
 - **直接消灭 issue 的 `**/*` 硬约束**：一个「匹配一切」的模式会把 `.git/config` 一起打开（issue 实测）。把 glob 从授权面整体移走，比给 `**/*` 加黑名单特判更彻底——后者还要处理 `./**/*`、`.//**/*`、`x/../**/*` 等等价拼写。fail fast 让这类拼写**根本进不了运行时**。
 - **防御性收益**：`is_denied` 的现有实现对每个候选做 `fnmatch`（`agent/workspace_policy.py:331-337`），allow 若也走 glob，就等于在这条已经出过越界 bug（本仓 #247、CVE-2025-54794 的同类）的路径上再加一层 `fnmatch` 语义。
+
+**实现期补充：还拒绝「非规范拼写」（与 U2 的四类并列，实现后按 U10 回写）**。除 glob 元字符 / 绝对路径 / `..` 段 / 尾 `/` 四条外，解析器还拒绝**前导 `./`**、**重复斜杠 `//`**、**`a/./b`** 这类含 `.` 段、**反斜杠分隔**以及**落成空路径**的条目。理由三条：① 这类条目**永远匹配不上** `WorkspacePolicy.relative_path()` 的返回值 ⇒ 接受它就是给一份**安全白名单**制造**静默 no-op**——本能力最坏的失败模式（用户以为开了、实际没开，而报错无处可见）；② 不误伤任何**功能性**配置：一切能表达的有效路径都有规范写法，且空白已被 `_parse_string_list` 的 `strip()` 兜住（`' .env'` / `'.env '` 仍解析为 `('.env',)`）；③ 与本能力「非法值 fail fast」的一贯口径一致，报错文案可操作（提示去掉前导 `./`）。**这是实现期的收紧而非放宽**，已同步进规格 delta 与 current spec 的「可写豁免的粒度与配置合法性」Requirement；逐条回归用例在 `tests/agent/test_config.py` 的 `test_allowed_write_paths_rejects_non_canonical_spelling`（`parametrize` 五条：`./.env` / `a//b` / `a/./b` / `a\b` / `.`）与正向对照 `test_allowed_write_paths_strips_surrounding_whitespace`（三条空白形态被 `strip()` 接受）。
+
+**如实更正（building-review R2 的 N-1）**：本段上一版（`6a43aee`）写「并有 `tests/agent/test_config.py` 的逐条用例」，但那次提交**只改了** `tests/agent/tools/test_command_guard.py`，非规范拼写的三条样例在全仓测试里计数为 **0**（`grep -rn -- 'a//b' tests/ | wc -l` = 0，`a/./b`、`a\b` 同）——即**声明先于落地**。现已补上上述用例使该声明为真；同一不准确表述也出现在 `6a43aee` 的提交信息里，按本项目惯例**新开提交如实更正、不改写历史**。
 
 **代价（如实写）**：用户想给一个目录下 10 个 env 文件授权时，必须写 10 条。这是**接受**的代价——本 change 的存在理由是「精确豁免」，不是「目录级授信」。若日后确实需要，`dir/**` 语法可以作为独立扩展（届时它需要单独解决「`**` 的段边界」问题，正是 #247 那一类）。
 
@@ -129,6 +144,8 @@
 
 **理由**：`check()` 的**第 1 步**是「对整句跑 denylist 正则」并**立即返回 `DENY`**（`:737-741`），它排在所有 IR 判定之前。那条正则要求「第二个参数里含 `/<敏感点名>`」，所以**只**拦嵌套形态：`cp x .env` 不匹配它（走 `mv_cp_dest`），`cp x config/.env` 匹配它。实测五个拼写变体（`./config/.env`、`'config/.env'`、`/tmp/../config/.env`）**全部**命中同一条 regex。
 
+**与上面这张表正交的另一条**（同样如实记录、**不同源**）：**附加根**（`/workspace add` / Web hub「+ 添加」）下的路径只在文件工具层兑现——护栏只持有主 workspace，`echo K >> /srv/other/.env` / `tee` / `dd of=` / `install` 因**根盲区**仍拒（`cp` / `mv` 另叠加整句正则那层）。详见 U9 的表与规格的排除项 ④。
+
 **为什么不让正则扫描给 allow 让路**：把 allow 判定提到第 1 步之前，等于让一条**整句正则**的命中可以被配置覆盖——而那条正则正是 `#254` 重建的单一解析管线的**第一道**、也是承载最多攻击用例的通道（`#254` 的 RIR findings 5 实测：清空 denylist 后攻击集拦截数 54 → 20）。为一个嵌套路径的 `cp` 便利去动它，收益与风险不对称，且违反 proposal 的 Non-Goal。
 
 **代价（如实写）**：proposal 原先举的 `['.env', 'config/.env']` 里，`config/.env` 的 Bash **`cp`/`mv`** 写不生效——而 `Write` / `Edit` / `echo >>` / `tee` / `dd of=` / `install` 都生效。⇒ 示例必须改成实际可兑现的形态，且用户配嵌套路径时**必须知道**这条边界（否则会得到「文件工具能写、`cp` 报 denied、且报错文案是笼统的 `Command denied by sandbox command guard`」的困惑）。
@@ -137,7 +154,7 @@
 
 ### Decision 6: 阶段 B 的观测报告落在**本 change 根目录**，不放 `reviews/`
 
-**选择**：阶段 B 的观测报告落 `openspec/changes/guard-write-allowlist/stage-b-observation.md`——即 change 目录**根部**，**不在 `reviews/` 下**。
+**选择**：阶段 B 的观测报告落 `openspec/changes/guard-write-allowlist/stage-b-observations.md`——即 change 目录**根部**，**不在 `reviews/` 下**。
 
 **理由（三条，按硬到软）**：
 1. **witnessloop 的孤儿规则**：一旦 `reviews/` 下存在**任意一份** witnessloop 形态 manifest，`reviews/**/*.md` 里**每一份**未被某份 manifest 的 `report_path` 绑定的报告都判「孤儿报告」（witnessloop `src/witnessloop/contract.py:185-206`）。阶段 B **必须**建 witnessloop 形态 manifest（B.2 的硬要求）⇒ 孤儿规则**一定会被激活**。
@@ -146,7 +163,7 @@
 
 **与「报告不放已归档 change」的关系**：B.1–B.8 的 tasks **住在已归档的 `witnessloop-adoption` 里**，本 change **不能**只把报告写在那儿（归档目录是 `event_explained` 受保护路径，每次写入都要解释事件；且那份 change 的实现 PR 已经合入，报告写在归档里等于给历史 change 补新证据，语义漂移）。⇒ 落点是**执行阶段 B 的这个 change 自己**，并在 `tasks.md` 里写一条「回链」任务：把报告路径写进 `witnessloop-adoption` 归档目录**之外**的跟踪入口（issue #305 的 comment），而不是往归档里加文件。
 
-**否决的备选**：(a) `reviews/stage-b-observation.md` —— 触发孤儿；(b) 强制给观测报告建 stage=building manifest —— 同 stage 双份、`matching[0]` 错绑风险；(c) 只写进 `witnessloop-adoption` 归档 —— 受保护写入 + 语义漂移；(d) 写进 `docs/` —— 会把一次**阶段验证**的过程材料沉淀成项目文档，与「阶段 A 报告随 change 走」的先例不一致。
+**否决的备选**：(a) `reviews/stage-b-observations.md` —— 触发孤儿；(b) 强制给观测报告建 stage=building manifest —— 同 stage 双份、`matching[0]` 错绑风险；(c) 只写进 `witnessloop-adoption` 归档 —— 受保护写入 + 语义漂移；(d) 写进 `docs/` —— 会把一次**阶段验证**的过程材料沉淀成项目文档，与「阶段 A 报告随 change 走」的先例不一致。
 
 ### Decision 7: 阶段 B 的证据形态与 `reviews/` 的一致状态
 
@@ -253,7 +270,14 @@
 
 **落地效果**：主根 `/repo`、附加根 `/srv/other`（`web/session.py:1516` 的 `register_workspace`；CLI 侧 `agent/commands/registry.py:507` 的 `policy.add_root(arg, create=True)`），配 `allowed_write_paths: ['.env']` ⇒ `Write /srv/other/.env` ⇒ ALLOW（`relative_path` 对附加根返回根相对路径，`agent/workspace_policy.py:307-314`）。
 
-**须如实记录的边界**：Bash 层 `cp x /srv/other/.env` 实测 `last_reason=denylist`——附加根必然是绝对路径、含 `/`，先命中 `command_guard.py:609` 的**不可挂钩**整句正则，与 U7 的嵌套路径缺口**同源**。
+**须如实记录的边界（两种成因，SHALL 分开归因）**：附加根下的路径在 Bash 层**不是同一种拒绝**——
+
+| 写形态 | 实测 `last_reason` | 成因 |
+|---|---|---|
+| `cp x /srv/other/.env` / `mv …` | `denylist` | 附加根必然是绝对路径、含 `/` ⇒ 先命中 `command_guard.py:609` 的整句正则（pre-IR、不可挂钩），与 U7 的嵌套缺口**同源** |
+| `echo K >> …` / `tee …` / `dd of=…` / `install x …` | `protected_redirect` / `tee_target` / `dd_target` / `install_target` | **根盲区**（root-blindness）：`CommandGuard` 只持有**主** workspace（它没有 `additional_roots`），路径比对不中 ⇒ 与 U7 **不同源**，也**不在** Decision 2 的排除项 ①②③ 内 |
+
+⇒ 本 change 交付的「如实划定兑现面」在这条上必须写准：其余四形不是「denylist 让路不让路」的问题，而是**护栏根本看不见那个根**。已在规格的「不使任何一层更宽」Requirement 补排除项 ④ + Scenario，并在「Bash 层豁免覆盖面差异必须被记录」补一条不同源说明，配回归断言钉住（`tests/agent/tools/test_command_guard.py` 的 `TestAdditionalRootIsRootBlind`）。**修法只改文字与断言，不改行为**：让护栏感知附加根会扩大本 change 范围（等于把 workspace 边界语义复制进护栏），且 U9 只裁定「条目作用域」，未裁定「护栏要不要感知附加根」。
 
 **否决的备选**：只覆盖主 workspace 根——需要额外解释「为什么同一个相对路径在不同根下结论不同」，而「用户加根」本身已经是一次显式授权。
 
@@ -353,7 +377,7 @@
 
 ## Impact Analysis
 
-- **新增**：`openspec/changes/guard-write-allowlist/stage-b-observation.md`（阶段 B 观测报告，change 根目录，见 Decision 6）；witnessloop 形态 manifest `reviews/grill.manifest.json` / `reviews/grill-adversarial.manifest.json` / `reviews/building.manifest.json`（阶段 B 产出，见 Decision 7）。
+- **新增**：`openspec/changes/guard-write-allowlist/stage-b-observations.md`（阶段 B 观测报告，change 根目录，见 Decision 6）；witnessloop 形态 manifest `reviews/grill.manifest.json` / `reviews/grill-adversarial.manifest.json` / `reviews/building.manifest.json`（阶段 B 产出，见 Decision 7）。
 - **修改（生产）**：`agent/workspace_policy.py`（新增 `allowed_write_paths` 参数 + 共享**纯函数**；`is_denied` 保持原语义）、`agent/tools/command_guard.py`（消费同一份 allowlist + 共享谓词）、`agent/tools/builtin/bash.py`（传参面，`:87`）、`agent/config.py`（`ToolsConfig` 字段 `:151-161` + `_parse_tools_config` `:875-897` + fail fast）、`agent/main.py:251`、`web/session.py:1728`、`benchmarks/agent_runner.py:349`、`asterwynd.example.yaml:35`。
 - **受影响但属正确的同源行为（grill 指出的漏列）**：`agent/browser/policy.py:121` 也调 `assert_write_allowed` ⇒ **浏览器产物落盘会一并继承 `allowed_write_paths` 豁免**。这是正确的同源效果，但必须列出来，否则读者会以为改动面止于上面那 8 个文件。
 - **明确不受影响（Decision 2 的对照清单）**：`WorkspacePolicy.is_denied`（`:316-338`）的语义、`assert_read_allowed`（`:350-354`）、`agent/code_intelligence/repo_map.py:81,96,173`（tree-sitter / RepoMap 的跳过判定）、`agent/tools/builtin/{read,grep,list_files,find,read_doc,inspect_git_diff,lsp}.py` 的读路径。

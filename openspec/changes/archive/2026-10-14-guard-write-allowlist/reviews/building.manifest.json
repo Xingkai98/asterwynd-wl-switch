@@ -1,0 +1,14 @@
+{
+  "schema": "witnessloop/review-manifest@v1",
+  "change_id": "2026-10-14-guard-write-allowlist",
+  "stage": "building",
+  "reviewer_run_id": "rev-building",
+  "author_run_id": "aut-building",
+  "base_sha": "3c7196b2531f41bd6c559c678a3101d2d6342a09",
+  "head_sha": "d94c08334ae570d64e1aa4e89030556c2b7cf1de",
+  "tasks_hash": "e10d5a574e716f02266f42bde3561f44f047991fb0387db27e844e2605adc8f5",
+  "spec_hash": "11efd21eea28e71527c81dc62ac927207741407f1a819a8f3b630b91bc2b57ad",
+  "diff_hash": "56e78fc96a4bf04bd135eb219423654e1bc708581155e660e33731d7f43daf17",
+  "report_hash": "119e0a2074f1553b3ad8a6f32ef277e6c2960226ee9d92f6c2a2df4b943e8f0a",
+  "report_path": "reviews/building-review.md"
+}
