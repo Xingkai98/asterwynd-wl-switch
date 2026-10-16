@@ -453,3 +453,5 @@ Python 3.11+ / asyncio / FastAPI + WebSocket / httpx / typer / tree-sitter / tik
 ## 致谢
 
 - [OrcaRouter](https://www.orcarouter.ai/ref/ref_4c1cf5a5bb71174f474d) — 多模型网关（含 DeepSeek、千问等免费模型）。把 `OPENAI_BASE_URL` 设为 `https://api.orcarouter.ai/v1` 即可通过 Asterwynd 使用。
+
+<!-- C1-b 实验：docs-only 合法 PR -->
